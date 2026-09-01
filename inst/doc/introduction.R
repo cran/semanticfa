@@ -30,7 +30,7 @@ cat("Auto-detected factors:", fit_auto$factors, "\n")
 sim <- sfa_similarity(big5$embeddings, encoding = "atomic_reversed",
                       scoring = big5$scoring)
 nf <- sfa_nfactors(sim, big5$embeddings,
-                   methods = c("parallel", "kaiser"),
+                   methods = c("parallel", "kaiser", "EKC"),
                    parallel_iter = 50)
 print(nf)
 

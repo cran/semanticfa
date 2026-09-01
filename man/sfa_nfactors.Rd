@@ -7,7 +7,7 @@
 sfa_nfactors(
   sim_matrix,
   embeddings = NULL,
-  methods = c("parallel", "kaiser", "TEFI"),
+  methods = "parallel",
   seed = 42L,
   parallel_iter = 100L,
   max_factors = NULL,
@@ -20,10 +20,27 @@ sfa_nfactors(
 \item{sim_matrix}{Numeric similarity matrix (n_items x n_items).}
 
 \item{embeddings}{Numeric embedding matrix (n_items x embedding_dim).
-Required when \code{"parallel"} is in \code{methods}.}
+Required when \code{"parallel"} or \code{"EKC"} is in \code{methods}.}
 
 \item{methods}{Character vector of retention methods to run. Supported:
-\code{"parallel"}, \code{"kaiser"}, \code{"TEFI"}, \code{"EGA"}.}
+\code{"parallel"} (\code{\link[=sfa_parallel]{sfa_parallel()}}), \code{"kaiser"} (latent-root
+criterion), \code{"TEFI"}, \code{"EGA"} (requires EGAnet),
+\code{"EKC"} (\code{\link[=sfa_ekc]{sfa_ekc()}}), \code{"MAP"} (\code{\link[=sfa_map]{sfa_map()}}), and
+\code{"semk"} (\code{\link[=sfa_semk]{sfa_semk()}}, the calibrated learned rule; requires
+Python and a one-time model download). The
+default runs parallel analysis alone, matching the field's conventional
+retention default; request the multi-criterion battery explicitly (the
+package's own demonstration uses
+\code{c("parallel", "kaiser", "TEFI", "EGA", "EKC")}). Notes for
+choosing: EGA needs the suggested EGAnet package; the latent-root rule
+is retained for reference despite its known liberal bias; TEFI tends to
+run low on embedding similarity matrices; MAP tends to track
+reliable minor structure well past the interpretable factor count,
+which would pull the modal consensus deep; and sem-k is the only
+criterion with validated planted-truth error rates on embedding
+matrices (its classical battery votes are consumed internally as
+features, so a consensus mixing sem-k with those same criteria
+double-counts them).}
 
 \item{seed}{Random seed for parallel analysis.}
 
@@ -44,7 +61,9 @@ An object of class \code{"sfa_nfactors"} with:
 \code{n_factors}.}
 \item{consensus}{Integer: modal recommendation across methods. When two
 or more recommendations tie for the mode, the smallest tied value is
-returned (the more parsimonious solution).}
+returned (the more parsimonious solution). With a single method this
+equals that method's suggestion, and \code{print()} omits the
+consensus line.}
 \item{eigenvalues}{Numeric vector: observed eigenvalues.}
 \item{parallel}{Parallel analysis result (if run), or \code{NULL}.}
 }

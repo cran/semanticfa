@@ -21,6 +21,12 @@
 #'   \code{\link{sfa_similarity}}.
 #' @param embed Embedding backend: \code{"sbert"}, \code{"openai"}, or a
 #'   function. Ignored when \code{embeddings} is provided.
+#' @param leximax Options list for `rotate = "leximax"`, ignored otherwise.
+#'   Recognized entries: `lexmap` (a precomputed [sfa_lexmap()] object; built
+#'   automatically when absent), `model`, `instruction`, `pool`, and
+#'   `block_size` (forwarded to [sfa_lexmap()]), plus `n_random`, `seed`,
+#'   `col_scale`, `rotation`, `normalize`, and `max_iter` (forwarded to
+#'   [sfa_leximax()]).
 #' @param model Model name for the embedding backend. If \code{NULL} (default),
 #'   resolves to a backend-appropriate default:
 #'   \code{"Qwen/Qwen3-Embedding-0.6B"} (about 1.2 GB) for \code{"sbert"} and
@@ -42,7 +48,9 @@
 #'   to all +1 with an informative message for encoding methods that use it.
 #' @param n_factors_method Retention rule when \code{nfactors = NULL}:
 #'   \code{"parallel"} (embedding-adapted, default), \code{"kaiser"},
-#'   \code{"EGA"}, or \code{"TEFI"}.
+#'   \code{"EGA"}, \code{"TEFI"}, or \code{"semk"} (calibrated semantic
+#'   retention via the learned sem-k rule; see [sfa_semk()] --- requires
+#'   Python and a one-time model download).
 #' @param dim_select Embedding-dimension selection before analysis:
 #'   \code{"none"} (default, use the full vector) or \code{"dynega"} (select the
 #'   leading-coordinate depth that best recovers structure by EGA-based depth
@@ -61,6 +69,10 @@
 #'   share, whereas the Gaussian unit-vector null has zero expected inter-item
 #'   similarity and is therefore a stricter, structure-free reference.)
 #' @param calibrate_iter Iterations for calibration.
+#' @param label_factors If \code{TRUE}, run [sfa_name()] on the fitted
+#'   object with default settings and store the result as \code{$labels}.
+#'   Requires the candidate pool for the embedding model (fetched on first
+#'   use; see [sfa_pool()]). Default \code{FALSE}.
 #' @param ... Additional arguments passed to \code{\link[psych]{fa}}.
 #'
 #' @returns An object of class \code{"sfa"} containing factor loadings,
@@ -126,13 +138,15 @@ sfa <- function(items,
                 seed             = 42L,
                 calibrate        = FALSE,
                 calibrate_iter   = 100L,
+                label_factors    = FALSE,
+                leximax          = list(),
                 ...) {
   cl <- match.call()
 
   encoding <- match.arg(encoding,
     c("atomic_reversed", "atomic", "squid", "mean_centered_pearson"))
   n_factors_method <- match.arg(n_factors_method,
-    c("parallel", "kaiser", "EGA", "TEFI"))
+    c("parallel", "kaiser", "EGA", "TEFI", "semk"))
   dim_select <- match.arg(dim_select)
 
   # validate numeric controls up front for clear error messages
@@ -198,9 +212,10 @@ sfa <- function(items,
     embed_dim     <- NA_integer_
     dimnames(sim_matrix) <- list(codes, codes)
     sim_matrix <- .check_psd(sim_matrix)
-    if (is.null(nfactors) && n_factors_method == "parallel") {
-      message("Embedding-adapted parallel analysis needs embeddings; with ",
-              "'similarity' supplied, using 'kaiser' retention instead.")
+    if (is.null(nfactors) && n_factors_method %in% c("parallel", "semk")) {
+      message("The '", n_factors_method, "' retention rule needs ",
+              "embeddings; with 'similarity' supplied, using 'kaiser' ",
+              "retention instead.")
       n_factors_method <- "kaiser"
     }
     # scoring is not used for a precomputed matrix; default silently (the matrix
@@ -246,6 +261,7 @@ sfa <- function(items,
 
   # --- Step 3: Determine nfactors ---
   pa_result <- NULL
+  semk_result <- NULL
   if (is.null(nfactors)) {
     nfactors <- switch(n_factors_method,
       parallel = {
@@ -258,7 +274,11 @@ sfa <- function(items,
       ),
       EGA = .retention_ega(sim_matrix),
       TEFI = .retention_tefi(sim_matrix, max_factors = NULL,
-                             rotate = rotate, fm = fm)
+                             rotate = rotate, fm = fm),
+      semk = {
+        semk_result <- sfa_semk(sim_matrix, transformed, seed = seed)
+        semk_result$n_factors
+      }
     )
   }
   nfactors <- max(1L, as.integer(nfactors))
@@ -268,8 +288,41 @@ sfa <- function(items,
   }
 
   # --- Step 4: Factor analysis via psych ---
-  fa_obj <- psych::fa(sim_matrix, nfactors = nfactors, rotate = rotate,
-                      fm = fm, n.obs = n.obs, warnings = FALSE, ...)
+  # rotate = "leximax" is handled by this package (psych does not know it):
+  # fit unrotated, then optimize the orientation toward the construct
+  # lexicon (see R/leximax.R). All other rotations pass through to psych.
+  lexi <- NULL
+  if (identical(rotate, "leximax")) {
+    fa_obj <- psych::fa(sim_matrix, nfactors = nfactors, rotate = "none",
+                        fm = fm, n.obs = n.obs, warnings = FALSE, ...)
+    if (nfactors >= 2L) {
+      lexmap <- leximax$lexmap %||%
+        sfa_lexmap(item_text,
+                   model = leximax$model %||% model,
+                   instruction = leximax$instruction,
+                   pool = leximax$pool,
+                   block_size = leximax$block_size %||% 50000L)
+      lexi <- do.call(sfa_leximax, c(
+        list(x = unclass(fa_obj$loadings), Phi = diag(nfactors),
+             lexmap = lexmap),
+        leximax[intersect(names(leximax),
+                          c("n_random", "seed", "col_scale", "rotation",
+                            "normalize", "max_iter"))]))
+      lx <- lexi$loadings
+      class(lx) <- "loadings"
+      fa_obj$loadings <- lx
+      fa_obj$Phi <- lexi$Phi
+      fa_obj$rot.mat <- t(solve(lexi$Th))
+      fa_obj$Structure <- lexi$loadings %*% lexi$Phi
+      vx <- diag(lexi$Phi %*% crossprod(lexi$loadings))
+      fa_obj$Vaccounted <- rbind(`SS loadings` = vx,
+                                 `Proportion Var` = vx / n_items,
+                                 `Cumulative Var` = cumsum(vx / n_items))
+    }
+  } else {
+    fa_obj <- psych::fa(sim_matrix, nfactors = nfactors, rotate = rotate,
+                        fm = fm, n.obs = n.obs, warnings = FALSE, ...)
+  }
 
   # --- Step 5: Heywood check ---
   hw <- .check_heywood(fa_obj$communality)
@@ -364,6 +417,7 @@ sfa <- function(items,
     omega         = omega,
     daal          = daal,
     parallel      = pa_result,
+    semk          = semk_result,
     calibration   = calibration,
     heywood       = hw,
     item_data     = item_data,
@@ -371,7 +425,11 @@ sfa <- function(items,
     # internal
     .fa           = fa_obj
   )
+  if (!is.null(lexi)) out$leximax <- lexi
 
   class(out) <- "sfa"
+  if (isTRUE(label_factors)) {
+    out$labels <- sfa_name(out)
+  }
   out
 }

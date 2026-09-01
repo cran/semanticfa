@@ -86,9 +86,9 @@
 #'
 #' @references
 #' Golino, H. (2026). Optimizing the landscape of LLM embeddings with Dynamic
-#' Exploratory Graph Analysis for generative psychometrics: A Monte Carlo study
-#' Manuscript under review. \emph{Proceedings of the 90th Annual International
-#' Meeting of the Psychometric Society}. arXiv:2601.17010.
+#' Exploratory Graph Analysis for generative psychometrics: A Monte Carlo
+#' study. Manuscript under review, \emph{Proceedings of the 90th Annual
+#' International Meeting of the Psychometric Society}. arXiv:2601.17010.
 #'
 #' @seealso \code{\link{sfa}} (use \code{dim_select = "dynega"}),
 #'   \code{\link{sfa_similarity}}

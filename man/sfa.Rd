@@ -22,6 +22,8 @@ sfa(
   seed = 42L,
   calibrate = FALSE,
   calibrate_iter = 100L,
+  label_factors = FALSE,
+  leximax = list(),
   ...
 )
 }
@@ -73,7 +75,9 @@ to all +1 with an informative message for encoding methods that use it.}
 
 \item{n_factors_method}{Retention rule when \code{nfactors = NULL}:
 \code{"parallel"} (embedding-adapted, default), \code{"kaiser"},
-\code{"EGA"}, or \code{"TEFI"}.}
+\code{"EGA"}, \code{"TEFI"}, or \code{"semk"} (calibrated semantic
+retention via the learned sem-k rule; see \code{\link[=sfa_semk]{sfa_semk()}} --- requires
+Python and a one-time model download).}
 
 \item{dim_select}{Embedding-dimension selection before analysis:
 \code{"none"} (default, use the full vector) or \code{"dynega"} (select the
@@ -98,6 +102,18 @@ share, whereas the Gaussian unit-vector null has zero expected inter-item
 similarity and is therefore a stricter, structure-free reference.)}
 
 \item{calibrate_iter}{Iterations for calibration.}
+
+\item{label_factors}{If \code{TRUE}, run \code{\link[=sfa_name]{sfa_name()}} on the fitted
+object with default settings and store the result as \code{$labels}.
+Requires the candidate pool for the embedding model (fetched on first
+use; see \code{\link[=sfa_pool]{sfa_pool()}}). Default \code{FALSE}.}
+
+\item{leximax}{Options list for \code{rotate = "leximax"}, ignored otherwise.
+Recognized entries: \code{lexmap} (a precomputed \code{\link[=sfa_lexmap]{sfa_lexmap()}} object; built
+automatically when absent), \code{model}, \code{instruction}, \code{pool}, and
+\code{block_size} (forwarded to \code{\link[=sfa_lexmap]{sfa_lexmap()}}), plus \code{n_random}, \code{seed},
+\code{col_scale}, \code{rotation}, \code{normalize}, and \code{max_iter} (forwarded to
+\code{\link[=sfa_leximax]{sfa_leximax()}}).}
 
 \item{...}{Additional arguments passed to \code{\link[psych]{fa}}.}
 }

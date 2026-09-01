@@ -1,3 +1,208 @@
+# semanticfa 0.5.0
+
+## sem-k: calibrated semantic factor retention
+
+* New retention criterion `sfa_semk()`: sem-k, a learned retention rule
+  for embedding similarity matrices with validated error rates. The rule
+  (a random-forest hybrid in the factor-forest lineage) was trained on a
+  planted-truth corpus of ~700 LLM-written item sets with known factor
+  structure spanning construct proximity, redundancy, reverse-keying,
+  cross-loadings, and minor-factor contamination, and reaches 65.7%
+  exact / 73.9% within-25% accuracy on held-out configurations under
+  the default encoder, with 61.6-69.0% exact replicated across nine
+  encoders from six providers. Every verdict carries a 90%
+  split-conformal interval (empirical coverage 91-96%).
+* `sfa()` gains `n_factors_method = "semk"`; the fitted object stores
+  the full verdict (interval, floor, battery votes) under `$semk`.
+* `sfa_nfactors()` gains `methods = "semk"`.
+* The estimand is semantic dimensionality: across 35 scales with large
+  response archives, sem-k verdicts track empirical human-data
+  dimensionality (Spearman rho .83) far better than documented textbook
+  counts do (rho .55), and verdicts agree across encoder providers at
+  mean pairwise rho .89.
+* Implementation: the frozen model artifact (consensus_rule_v1.0,
+  ~17 MB) is downloaded once from the `semk-v1` GitHub release and
+  cached under `tools::R_user_dir("semanticfa", "cache")`, with sha256
+  verification; the feature-extraction pipeline is vendored under
+  `inst/python/semk/` and driven through reticulate (numpy, scipy,
+  scikit-learn pinned to the artifact's training series (1.8.*), and
+  joblib, declared via `py_require()` on first use).
+  Per-encoder register-floor calibration files ship as release assets
+  (pass `floor=` for non-default encoders).
+
+# semanticfa 0.4.0
+
+## Leximax: lexical target rotation
+
+* New rotation option `rotate = "leximax"` in `sfa()`: orients factor axes
+  toward the construct lexicon by maximizing nameability, the mean cosine
+  between each factor's naming target and its retrieved construct term.
+  The optimizer alternates the package's deterministic naming machinery
+  with oblique target rotation (GPArotation) from multiple seeded starts,
+  returns the best self-consistent (recurrent) orientation, and re-names
+  the winner through the canonical pool path. Model fit is invariant by
+  construction.
+* New `sfa_leximax()`: post-hoc leximax rotation of any fitted solution
+  (an `sfa` fit, a `psych::fa` fit, or a plain pattern matrix with item
+  texts), for rotating existing solutions without refitting.
+* New `sfa_lexmap()` and `sfa_nameability()`: the reusable pool-by-item
+  lexical map, and the retrieved labels plus nameability of any
+  orientation of the mapped items (also the engine for Monte Carlo
+  calibration of nameability).
+* `sfa_nameability()` and `sfa_leximax()` gain optional `baseline` and
+  `baseline_sd` arguments for surprise scoring: word scores are centered
+  (and optionally standardized) against a per-word null target cosine,
+  which suppresses words that sit close to every factor's target rather
+  than to one in particular. Both default to `NULL`, leaving the raw
+  cosine scoring unchanged.
+
+# semanticfa 0.3.0
+
+## Content-validity audit: one 95% convention, per-item p-values
+
+* `sfa_coverage()` now calibrates both headline numbers against an ideal
+  same-length scale under a single 95% convention. The coverage radius is
+  the 95% quantile of the matched-size null (`radius_q = 0.95`; an ideal
+  scale's construct coverage is ~0.95), and each item's corroboration
+  count (construct texts within its radius) gets an empirical p-value
+  against the ideal-item null, flagged at `alpha = 0.05` (an ideal
+  scale's item relevance is also ~0.95). The identity behind the
+  convention: `1 - radius_q` and `alpha` are per-decision Type I error
+  rates of Monte Carlo tests.
+* The fixed-count relevance rule (`k_precision`) is retired: corroboration
+  counts grow linearly with region size, so a fixed threshold rewarded
+  sampling more construct text. The calibrated critical count rescales
+  with the region, making item relevance region-size invariant.
+  `k_precision` is ignored with a warning; `delta_q` maps to `radius_q`
+  with a warning.
+* Adopted vocabulary throughout output, docs, and returned fields:
+  *construct coverage* (was "coverage@delta*"), *item relevance* (was
+  "precision"), *coverage radius* (was "delta*"), *corroboration count*.
+  Renamed fields: `radius`, `radius_q`, `item_relevance`,
+  `corroboration`, `p_values`, `relevant_items`, `critical_count`,
+  `ideal_relevance`.
+* `p_adjust = "BH"` flags items by Benjamini-Hochberg false discovery
+  rate across the scale instead of per-item alpha.
+* Two new plots. `plot(audit)` draws a proportional Euler diagram: two
+  equal disks whose overlap area equals the measured construct coverage,
+  filled with the real texts (dots) and items (triangles) placed by their
+  full-space verdicts - a constructed diagram, not a projection (no 2-d
+  projection of the embedding space preserves these fractions).
+  `plot(audit, type = "relevance")` draws the per-item chart:
+  corroboration counts on a log axis, empirical p-values on every bar,
+  the calibrated critical count as a reference line, flagged items in
+  red. The pre-0.3.0 curve plot remains as `type = "curve"`.
+* Multi-factor scales audit **per factor by default**: when the items data
+  frame carries a `factor` column, `sfa_coverage()` runs one audit per
+  subscale - content validity is a property of an (item set, construct
+  claim) pair, and a battery makes one claim per subscale - returning an
+  `"sfa_coverage_battery"` (a named list of audits with a compact
+  per-factor print table). `region` accepts a list named by factor so each
+  subscale is audited against its own construct region; the `factor`
+  argument restricts the battery to a subset or a single factor.
+* `cross = TRUE` audits every factor against every region and returns an
+  `"sfa_coverage_cross"` matrix of audits - the content analogue of a
+  multitrait matrix, with no data collection: items should be relevant to
+  their own construct's region (convergent) and irrelevant to their
+  siblings' (discriminant). `sfa_cross_matrix()` extracts the numeric
+  relevance or coverage matrix; the print method marks own-construct
+  cells and states the caveat that off-diagonal relevance is floored by
+  how separable the constructs are in language, not by zero.
+* The package now enables the entire study pipeline in R, end to end:
+  `sfa_build_regions()` builds many construct regions in one corpus pass
+  (word-boundary variant matching, so compositional components like "care"
+  never match "career"; `embeddings = FALSE` defers encoding);
+  `sfa_reembed_region()` re-embeds one extraction under any encoder (the
+  encoder-ladder workflow: regions differ only in embedding space, never
+  in text); `sfa_build_bank()` pre-embeds items, definitions, and planned
+  narrowings; and `sfa_embedding_bank()` turns a saved bank into an
+  `embed =` function so every audit runs from published embeddings with
+  no encoder loaded. Heavy steps run on any GPU machine with the same R
+  calls (encoders drive through reticulate, including large models via
+  the manual transformers fallback).
+* Insufficient-data signaling: when a construct name returns too little
+  corpus text, the method says so in the right epistemic register - the
+  construct is not "invalid"; there is not enough natural-language data
+  about it (under this name, in this corpus) to estimate content validity
+  with this method. `sfa_build_region()` warns below the ~200-sentence
+  saturation threshold (estimates noisy, coverage biased favorable) and
+  errors below the 25-sentence audit minimum; `print()` on regions and
+  audits carries a NOTE/CAUTION line; audits store `small_region`.
+* The printed report lists flagged items with their counts and p-values,
+  and states the ideal benchmark next to both headline numbers.
+* Bootstrap CIs now recalibrate both the radius and the critical count
+  inside every resample and report `relevance_ci` (was `precision_ci`).
+* Verified against the Python reference implementation on identical
+  embeddings (431PTQ vs. the procrastination region, Qwen3-Embedding-8B).
+
+# semanticfa 0.2.0
+
+## New features
+
+* `sfa_name()` labels the factors of an `sfa` fit with psychological
+  construct names retrieved from a 368k-term pre-filtered candidate pool
+  using instruction-conditioned embeddings. Deterministic; returns the
+  label, its provenance rule, and a leave-one-out candidate set per factor
+  (the method's error bar). Labels name the pole toward which the factor's
+  positive loadings point.
+* Two-encoder support: `sfa_name(fit, model = ...)` names with a different
+  (typically larger) embedding model than the one used for extraction.
+* `sfa_pool()` fetches pre-generated pool embeddings for the supported
+  models (downloaded once into the user cache) or builds a pool locally for
+  any sentence-transformers model. Default precision is int8 (half-size
+  downloads); relative to fp16 it changes 3 of 75 benchmark labels, all on
+  weak factors, all to near-synonyms ("stress resilience" -> "resilience";
+  two analogous changes under the large naming model). Pass
+  `precision = "fp16"` for exact parity with the research pipeline.
+* `sfa(..., label_factors = TRUE)` runs naming inline and stores the result
+  as `fit$labels`.
+* `sfa_naming_instruction()` exposes the naming instruction; overriding it
+  is supported but warned (label robustness was validated under the
+  default).
+* The sentence-transformers backend now keeps the most recently used
+  encoder resident instead of re-loading it on every `sfa_embed()` call,
+  and loading a different model releases the previous one (so an
+  extraction model and a large naming model never co-occupy GPU memory).
+* New option `semanticfa.torch_dtype` ("float16", "bfloat16", or
+  "float32") controls the weight dtype of sentence-transformers models.
+  Large naming encoders do not fit common GPUs at float32.
+* When sentence-transformers cannot load a model (some text-only
+  checkpoints of multimodal families are misrouted through a processor
+  that demands an image component), the backend now falls back to a plain
+  transformers pipeline reproducing the model's own modules.json:
+  attention-mask-based last-token pooling plus L2 normalization.
+
+# semanticfa 0.1.2
+
+* New retention method `sfa_ekc()`: the empirical Kaiser criterion (Braeken &
+  van Assen, 2017) with the embedding dimension in the sample-size role. Its
+  serial reference-eigenvalue correction addresses the classical
+  parallel-analysis weakness that reference values ignore variance already
+  captured by real factors. Available in `sfa_nfactors()` via
+  `methods = "EKC"`.
+* `sfa_nfactors()` default `methods` changed from
+  `c("parallel", "kaiser", "TEFI")` to `"parallel"` alone. Retention defaults
+  should match the field's conventional expectation (parallel analysis), and
+  the old default's silent votes carried known biases (the latent-root rule
+  is liberal by construction; TEFI runs low on embedding similarity
+  matrices, so the old bare-call consensus could tie-break down to its
+  value). The full battery is opt-in, as in the package demonstration
+  (`c("parallel", "kaiser", "TEFI", "EGA", "EKC")`), and `print()` now shows
+  the consensus line only when two or more methods ran.
+* New retention method `sfa_map()`: Velicer's (1976) minimum average partial.
+  Available in `sfa_nfactors()` via `methods = "MAP"` but deliberately not a
+  default vote: on embedding similarity matrices MAP tracks reliable minor
+  structure well past the interpretable factor count.
+* New diagnostic `sfa_cd()`: a comparison-data misfit profile adapting Ruscio
+  & Roche (2012), with print and plot methods. It reports how well k-factor
+  comparison populations reproduce the observed eigenvalue spectrum as k
+  grows, rather than a single retention verdict: response data with a crisp
+  factor boundary show a sharp elbow, while embedding similarity matrices
+  decline smoothly. Ruscio & Roche's sequential significance rule is opt-in
+  (`alpha =`) because it saturates at `n_factors_max` on embedding matrices
+  (the k-factor comparison model cannot reproduce the anisotropic spectral
+  tail, so every added factor keeps helping).
+
 # semanticfa 0.1.1
 
 * Bundled data upgrade: `data(big5)` now ships 50 x 4096 `Qwen3-Embedding-8B`

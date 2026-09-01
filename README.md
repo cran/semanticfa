@@ -10,12 +10,14 @@ with a scale before (or without) collecting data: building semantic similarity
 matrices, deciding how many factors to keep, reading a semantic "loadings"
 table, comparing the recovered structure to theory, flagging redundant items,
 building short forms, vetting brand-new candidate items, detecting
-jingle/jangle fallacies across scales, and visualizing the item space.
+jingle/jangle fallacies across scales, naming the factors it finds, auditing
+whether the items actually cover their construct, and visualizing the item
+space.
 
 ## Installation
 
 ```r
-# from CRAN (once available):
+# from CRAN:
 install.packages("semanticfa")
 
 # development version:
@@ -77,8 +79,12 @@ No respondents are involved at any step.
 | Function | Purpose |
 |---|---|
 | `sfa()` | The end-to-end pipeline: embed → similarity → retain → extract → diagnose. Accepts raw text, precomputed embeddings, an `sfa_embeddings` object, or a precomputed similarity matrix. |
-| `sfa_nfactors()` | How many factors to keep — **parallel analysis, Kaiser, TEFI, and EGA** in one call. |
+| `sfa_nfactors()` | How many factors to keep — parallel analysis by default, with **Kaiser, TEFI, EKC, EGA, MAP, and sem-k** as an opt-in consensus battery. |
 | `sfa_parallel()` | Embedding-adapted parallel analysis (random-unit-vector null; no sample size needed). |
+| `sfa_ekc()` | Empirical Kaiser criterion (Braeken & van Assen) with the embedding dimension as the sample size. |
+| `sfa_map()` | Velicer's minimum average partial (tracks *all* reliable structure — see docs before trusting it here). |
+| `sfa_cd()` | Comparison-data **misfit profile** (Ruscio & Roche, adapted): does the matrix have a crisp factor count, or graded structure? |
+| `sfa_semk()` | **sem-k**: a learned retention rule trained on planted-truth item sets, reporting a factor count with a 90% conformal interval. |
 | `sfa_dimselect()` | Select the informative leading embedding coordinates ("depth") by EGA depth optimization. |
 | `as_psych()` | Hand the solution to `psych` (`factor.congruence()`, `fa.sort()`, …) as a standard `fa` object. |
 
@@ -90,6 +96,9 @@ No respondents are involved at any step.
 | `sfa_project()` | Place items on interpretable **bipolar axes** (e.g. *mild* ↔ *severe*, *passive* ↔ *active*). |
 | `sfa_congruence()` | Compare the recovered structure to an empirical or theoretical one: Tucker φ, NMI, ARI, Frobenius, and disattenuated correlation. |
 | `sfa_jinglejangle()` | Flag **jingle** (same name, different content) and **jangle** (different name, same content) fallacies across multiple scales. |
+| `sfa_name()` | **Name the factors**: retrieve the construct term each factor's items point at, from a large word pool. |
+| `sfa_leximax()` | **Lexical target rotation**: orient the axes toward nameable constructs (also `sfa(rotate = "leximax")`). Model fit is invariant. |
+| `sfa_nameability()` | How nameable a given orientation is, plus each factor's retrieved label and runner-up candidates. |
 
 ### 4. Refine the scale — before collecting data
 
@@ -99,7 +108,17 @@ No respondents are involved at any step.
 | `sfa_simplify()` | Build response-free **short forms** by selecting the most representative items per factor. |
 | `sfa_item_fit()` | Vet a **brand-new candidate item**: how well does it match the construct name and the other items, and is it redundant with any of them? |
 
-### 5. Visualize
+### 5. Audit content validity — does the scale cover its construct?
+
+| Function | Purpose |
+|---|---|
+| `sfa_coverage()` | Test whether a scale's items **cover their construct's semantic region**, against a matched-size null: construct coverage, per-item relevance with p-values, and the gaps left uncovered. Multi-factor scales audit per subscale. |
+| `sfa_build_region()` | Build a construct's semantic region from a text corpus (`sfa_build_regions()` for many at once). |
+| `sfa_cross_matrix()` | The content analogue of a multitrait matrix: every factor audited against every construct region, with no data collection. |
+| `sfa_gaps()`, `sfa_deletion_gaps()` | What a scale misses, and what a shortened form gives up relative to the full one. |
+| `sfa_build_bank()`, `sfa_embedding_bank()` | Pre-embed items and regions once, then run every audit from saved embeddings with no encoder loaded. |
+
+### 6. Visualize
 
 | Function | Purpose |
 |---|---|
